@@ -1,0 +1,14 @@
+player.c:38:20:play_note_on_timer	24	static
+player.c:50:20:play_motor1	16	static
+player.c:51:20:play_motor2	16	static
+player.c:52:20:play_motor3	16	static
+player.c:57:20:tick_voice	16	static
+player.c:80:6:player_tick	8	static
+player.c:90:6:player_init	8	static
+player.c:103:6:player_play_song	24	static
+player.c:131:6:player_next_song	16	static
+player.c:136:6:player_play_3ch	24	static
+player.c:152:6:player_set_volume_channel	16	static
+player.c:162:6:player_set_volume	16	static
+player.c:168:6:player_stop	4	static
+player.c:175:6:player_play	16	static
