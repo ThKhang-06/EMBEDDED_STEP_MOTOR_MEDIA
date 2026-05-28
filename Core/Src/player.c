@@ -3,10 +3,10 @@
 #include "songs.h"          // now defines Song3 and song_list[]
 #include "stm32f4xx.h"
 
-extern TIM_HandleTypeDef htim1;  // Kênh Melody - PA8
-extern TIM_HandleTypeDef htim2;  // Kênh Harmony - PA0
-extern TIM_HandleTypeDef htim9;  // Kênh Bass - PE5
-extern TIM_HandleTypeDef htim4;  // Ngắt nhịp 1ms bài hát
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
 // ---------------------------------------------------------------------------
 // PER‑MOTOR VOLUME (0‑100)
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ static inline void play_note_on_timer(TIM_TypeDef* tim, uint8_t note, uint8_t vo
 
 static inline void play_motor1(uint8_t note) { play_note_on_timer(TIM1, note, vol_melody); }
 static inline void play_motor2(uint8_t note) { play_note_on_timer(TIM2, note, vol_harmony); }
-static inline void play_motor3(uint8_t note) { play_note_on_timer(TIM9, note, vol_bass); }
+static inline void play_motor3(uint8_t note) { play_note_on_timer(TIM4, note, vol_bass); }
 
 // ---------------------------------------------------------------------------
 // VOICE TICK
@@ -93,10 +93,9 @@ void player_init(void) {
     // Kích hoạt luồng băm xung PWM độc lập cho cả 3 cụm Timer phần cứng
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim9, TIM_CHANNEL_1);
-
+    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
     // Kích hoạt ngắt thời gian TIM4 nhịp 1ms bài hát
-    HAL_TIM_Base_Start_IT(&htim4);
+    HAL_TIM_Base_Start_IT(&htim3);
 }
 
 // Load a song by index from the registry
@@ -104,8 +103,8 @@ void player_play_song(uint8_t idx) {
     if (idx >= SONG_COUNT) return;
     const Song3* s = &song_list[idx];
     // Stop all motors
-    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM9->CCR1 = 0;
-    TIM1->EGR = TIM2->EGR = TIM9->EGR = TIM_EGR_UG;
+    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM4->CCR1 = 0;
+    TIM1->EGR = TIM2->EGR = TIM4->EGR = TIM_EGR_UG;
 
     voice_melody.steps   = s->melody;
     voice_melody.length  = s->melody_len;
@@ -136,8 +135,8 @@ void player_next_song(void) {
 void player_play_3ch(const Step* melody, const Step* harmony, const Step* bass,
                      uint16_t mel_len, uint16_t har_len, uint16_t bas_len) {
     // Direct play (used only if you bypass song registry)
-    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM9->CCR1 = 0;
-    TIM1->EGR = TIM2->EGR = TIM9->EGR = TIM_EGR_UG;
+    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM4->CCR1 = 0;
+    TIM1->EGR = TIM2->EGR = TIM4->EGR = TIM_EGR_UG;
 
     voice_melody.steps   = melody;   voice_melody.length  = mel_len;
     voice_melody.note_idx = 0;       voice_melody.note_ms  = 0;   voice_melody.load_next = 1;
@@ -166,8 +165,8 @@ void player_set_volume(uint8_t vol) {
 }
 
 void player_stop(void) {
-    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM9->CCR1 = 0;
-    TIM1->EGR = TIM2->EGR = TIM9->EGR = TIM_EGR_UG;
+    TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM4->CCR1 = 0;
+    TIM1->EGR = TIM2->EGR = TIM4->EGR = TIM_EGR_UG;
     voice_melody.steps = voice_harmony.steps = voice_bass.steps = NULL;
 }
 
