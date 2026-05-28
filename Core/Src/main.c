@@ -20,9 +20,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <string.h>
-#include <stdio.h>
 #include "ili9341.h"
+#include <stdio.h>
+#include <string.h>
 #include "player.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -65,8 +65,8 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
-TIM_HandleTypeDef htim9;
 
 /* USER CODE BEGIN PV */
 const char* Main_Choices[] = {
@@ -75,6 +75,7 @@ const char* Main_Choices[] = {
 };
 
 const char* Credits_List[] = {
+	"0. Mentor: Ths. Pham Minh Quan dang cap dep trai sieu cap vu tru",
     "1. Dang Thai Khang - 24520728",
     "2. Trieu Quoc Huy - 24520709",
     "3. Phan Khanh Tam - 24521569",
@@ -107,8 +108,8 @@ int16_t scroll_pos = 0;
 int16_t menu_scroll_pos = 0;
 char scrolled_text[60];
 
-volatile uint32_t play_pending_time = 0; // Lưu thời điểm bắt đầu đợi
-volatile uint8_t is_waiting_to_play = 0; // Cờ hiệu báo đang trong thời gian chờ
+volatile uint32_t play_pending_time = 0; // Lưu th�?i điểm bắt đầu đợi
+volatile uint8_t is_waiting_to_play = 0; // C�? hiệu báo đang trong th�?i gian ch�?
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -118,7 +119,7 @@ static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM4_Init(void);
-static void MX_TIM9_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void Draw_MainChoice(void);
 void Draw_Menu(void);
@@ -177,7 +178,7 @@ void FSM_Update(Button_t event) {
                     else if (event == BTN_DOWN) {
                         if (current_selection < SONG_COUNT - 1) {
                             current_selection++;
-                            // Nếu vượt quá cạnh dưới cửa sổ trượt hiển thị -> Đẩy khung xuống
+                            // Nếu vượt quá cạnh dưới cửa sổ trượt hiển thị -> �?ẩy khung xuống
                             if (current_selection - menu_start_index >= 3) {
                                 menu_start_index = current_selection - 2;
                             }
@@ -207,7 +208,7 @@ void FSM_Update(Button_t event) {
                         update_display = 1;
                     }
                     else if (event == BTN_SELECT) {
-                        // Đảo trạng thái giữa Chạy và Tạm dừng
+                        // �?ảo trạng thái giữa Chạy và Tạm dừng
                         is_playing = !is_playing;
                         update_display = 1;
                     }
@@ -224,7 +225,7 @@ void FSM_Update(Button_t event) {
                         update_display = 1;
                     }
                     else if (event == BTN_LEFT) {
-                    	// NÚT TRÁI: Dịch xuống bài hát phía sau
+                    	// NÚT TR�?I: Dịch xuống bài hát phía sau
                         if (current_selection < SONG_COUNT - 1) {
                             current_selection++;
                         } else {
@@ -304,7 +305,7 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM1_Init();
   MX_TIM4_Init();
-  MX_TIM9_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   // Sửa lỗi CubeMX thiếu kích hoạt ngắt tổng cho Timer 2
   HAL_NVIC_DisableIRQ(TIM2_IRQn);
@@ -347,9 +348,9 @@ int main(void)
                 }
 
                 if (is_waiting_to_play == 1) {
-                        if (HAL_GetTick() - play_pending_time >= 2000) { // Đủ 2000ms = 2 giây
+                        if (HAL_GetTick() - play_pending_time >= 2000) { // �?ủ 2000ms = 2 giây
                             player_play_song(current_selection);         // Phát nhạc
-                            is_waiting_to_play = 0;                      // Tắt cờ đợi
+                            is_waiting_to_play = 0;                      // Tắt c�? đợi
                             is_playing = 1;                              // Cập nhật trạng thái
                             update_display = 1;                          // Cập nhật giao diện
                         }
@@ -619,6 +620,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 999;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 99;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief TIM4 Initialization Function
   * @param None
   * @retval None
@@ -632,14 +678,15 @@ static void MX_TIM4_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM4_Init 1 */
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 999;
+  htim4.Init.Prescaler = 99;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 99;
+  htim4.Init.Period = 1135;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -651,52 +698,13 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
-  * @brief TIM9 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM9_Init(void)
-{
-
-  /* USER CODE BEGIN TIM9_Init 0 */
-
-  /* USER CODE END TIM9_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM9_Init 1 */
-
-  /* USER CODE END TIM9_Init 1 */
-  htim9.Instance = TIM9;
-  htim9.Init.Prescaler = 99;
-  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 1135;
-  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim9) != HAL_OK)
   {
     Error_Handler();
   }
@@ -704,14 +712,14 @@ static void MX_TIM9_Init(void)
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim9, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM9_Init 2 */
+  /* USER CODE BEGIN TIM4_Init 2 */
 
-  /* USER CODE END TIM9_Init 2 */
-  HAL_TIM_MspPostInit(&htim9);
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
 
 }
 
@@ -725,7 +733,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -813,22 +820,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM4) {
-        // Chỉ cho phép dịch nốt nhạc khi ĐANG Ở MÀN HÌNH PLAYER và ĐANG PLAY
+    if (htim->Instance == TIM3) {
+        // Chỉ cho phép dịch nốt nhạc khi �?ANG Ở MÀN HÌNH PLAYER và �?ANG PLAY
         if (current_state == STATE_MUSIC_PLAYER && is_playing == 1) {
             player_tick();
         } else {
             // Nếu đang Pause, hoặc lùi ra Menu -> Ép tắt xung PWM ngay lập tức
             TIM1->CCR1 = 0;
             TIM2->CCR1 = 0;
-            TIM9->CCR1 = 0;
+            TIM4->CCR1 = 0;
         }
     }
 }
 
-// ==================== HÀM VẼ GIAO DIỆN ĐỒ HỌA LCD ILI9341 ====================
+// ==================== HÀM VẼ GIAO DIỆN �?Ồ HỌA LCD ILI9341 ====================
 
-// --- 1. MÀN HÌNH GIAO DIỆN BAN ĐẦU (MENU & CREDIT) ---
+// --- 1. MÀN HÌNH GIAO DIỆN BAN �?ẦU (MENU & CREDIT) ---
 void Draw_MainChoice(void) {
 	ILI9341_FillRectangle(0, 36, 320, 174, ILI9341_BLACK);
 
@@ -848,7 +855,7 @@ void Draw_MainChoice(void) {
     ILI9341_WriteString(15, 211, "Up/Down: Move | Select: Enter", Font_7x10, ILI9341_GREEN, ILI9341_BLACK);
 }
 
-// --- 2. MÀN HÌNH DANH SÁCH BÀI HÁT ---
+// --- 2. MÀN HÌNH DANH S�?CH BÀI H�?T ---
 void Draw_Menu(void) {
     // Thanh Header màu xanh cố định
 	if (menu_refresh_flag == 1) {
@@ -873,7 +880,7 @@ void Draw_Menu(void) {
 
 
         if (current_item == current_selection) {
-            // ================== BÀI HÁT ĐƯỢC CHỌN ==================
+            // ================== BÀI H�?T �?ƯỢC CHỌN ==================
             if (menu_scroll_pos == 0) {
                 ILI9341_FillRectangle(10, y_pos - 5, 300, 30, ILI9341_YELLOW);
             }
@@ -904,7 +911,7 @@ void Draw_Menu(void) {
             }
         }
         else {
-            // ================== BÀI HÁT KHÔNG ĐƯỢC CHỌN  ==================
+            // ================== BÀI H�?T KHÔNG �?ƯỢC CHỌN  ==================
             if (menu_refresh_flag == 1) {
                 if (len <= menu_max_chars) {
                     ILI9341_WriteString(15, y_pos, song_list[current_item].name, Font_11x18, ILI9341_WHITE, ILI9341_BLACK);
@@ -927,7 +934,7 @@ void Draw_Menu(void) {
 }
 
 
-// --- 3. MÀN HÌNH PHÁT NHẠC ---
+// --- 3. MÀN HÌNH PH�?T NHẠC ---
 void Draw_MusicPlayer(const char* song_name) {
     // Header cố định
 	if (player_refresh_flag == 1) {
@@ -992,7 +999,7 @@ void Draw_Credits(void) {
 	        ILI9341_WriteString(10, 8, "GROUP CREDITS", Font_11x18, ILI9341_WHITE, ILI9341_MAROON);
 
 	        ILI9341_WriteString(20, 48, "PROJECT:EMBEDDED MP3 PLAYER", Font_11x18, ILI9341_YELLOW, ILI9341_BLACK);
-	        ILI9341_WriteString(20, 73, "Mentor: Ths. Pham Minh Quan", Font_11x18, ILI9341_WHITE, ILI9341_BLACK);
+//	        ILI9341_WriteString(20, 73, "Mentor: Ths. Pham Minh Quan", Font_11x18, ILI9341_WHITE, ILI9341_BLACK);
 
 	        ILI9341_FillRectangle(10, 100, 300, 115, ILI9341_BLACK);
 	    }
@@ -1013,7 +1020,7 @@ void Draw_Credits(void) {
         if (current_item == credits_selection) {
 
 
-            // ================== HÀNG ĐƯỢC CHỌN ==================
+            // ================== HÀNG �?ƯỢC CHỌN ==================
 
             if (credits_scroll_pos == 0) {
                 ILI9341_FillRectangle(10, y_pos - 5, 300, 28, ILI9341_YELLOW);
@@ -1044,7 +1051,7 @@ void Draw_Credits(void) {
             }
         }
         else {
-            // ================== HÀNG KHÔNG ĐƯỢC CHỌN ==================
+            // ================== HÀNG KHÔNG �?ƯỢC CHỌN ==================
             if (credits_refresh_flag == 1) {
                 if (len <= credits_max_chars) {
                     ILI9341_WriteString(15, y_pos, Credits_List[current_item], Font_11x18, ILI9341_WHITE, ILI9341_BLACK);
