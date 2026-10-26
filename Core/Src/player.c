@@ -8,12 +8,21 @@ extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
 // ---------------------------------------------------------------------------
-// PER‑MOTOR VOLUME (0‑100)
+// MOTOR VOLUME (0‑100)
 // ---------------------------------------------------------------------------
 static uint8_t vol_melody = 80;
 static uint8_t vol_harmony = 60;
 static uint8_t vol_bass = 50;
-
+// Lấy các biến từ main.c sang
+extern Step track_melody[];
+extern Step track_harmony[];
+extern Step track_bass[];
+extern uint16_t len_melody;
+extern uint16_t len_harmony;
+extern uint16_t len_bass;
+extern uint8_t total_songs_found;
+// Khai báo hàm cầu nối từ main.c
+extern void Load_Song_From_SD(uint8_t idx);
 // ---------------------------------------------------------------------------
 // 3-VOICE SEQUENCER STATE
 // ---------------------------------------------------------------------------
@@ -100,26 +109,29 @@ void player_init(void) {
 
 // Load a song by index from the registry
 void player_play_song(uint8_t idx) {
-    if (idx >= SONG_COUNT) return;
-    const Song3* s = &song_list[idx];
+    if (total_songs_found == 0 || idx >= total_songs_found) return;
+
+    // Yêu cầu main.c đọc thẻ SD và nạp data vào mảng track_...
+    Load_Song_From_SD(idx);
+
     // Stop all motors
     TIM1->CCR1 = 0; TIM2->CCR1 = 0; TIM4->CCR1 = 0;
     TIM1->EGR = TIM2->EGR = TIM4->EGR = TIM_EGR_UG;
 
-    voice_melody.steps   = s->melody;
-    voice_melody.length  = s->melody_len;
+    voice_melody.steps   = track_melody;
+    voice_melody.length  = len_melody;
     voice_melody.note_idx = 0;
     voice_melody.note_ms  = 0;
     voice_melody.load_next = 1;
 
-    voice_harmony.steps   = s->harmony;
-    voice_harmony.length  = s->harmony_len;
+    voice_harmony.steps   = track_harmony;
+    voice_harmony.length  = len_harmony;
     voice_harmony.note_idx = 0;
     voice_harmony.note_ms  = 0;
     voice_harmony.load_next = 1;
 
-    voice_bass.steps   = s->bass;
-    voice_bass.length  = s->bass_len;
+    voice_bass.steps   = track_bass;
+    voice_bass.length  = len_bass;
     voice_bass.note_idx = 0;
     voice_bass.note_ms  = 0;
     voice_bass.load_next = 1;
@@ -128,7 +140,8 @@ void player_play_song(uint8_t idx) {
 }
 
 void player_next_song(void) {
-    uint8_t next = (current_song_idx + 1) % SONG_COUNT;
+    if (total_songs_found == 0) return;
+    uint8_t next = (current_song_idx + 1) % total_songs_found;
     player_play_song(next);
 }
 

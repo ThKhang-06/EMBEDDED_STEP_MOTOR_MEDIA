@@ -18,12 +18,12 @@
 #define ILI9341_SPI_PORT hspi1
 extern SPI_HandleTypeDef ILI9341_SPI_PORT;
 
-#define ILI9341_RES_Pin       GPIO_PIN_2
-#define ILI9341_RES_GPIO_Port GPIOA
+#define ILI9341_RES_Pin       GPIO_PIN_0
+#define ILI9341_RES_GPIO_Port GPIOB
 #define ILI9341_CS_Pin        GPIO_PIN_4
 #define ILI9341_CS_GPIO_Port  GPIOA
-#define ILI9341_DC_Pin        GPIO_PIN_3
-#define ILI9341_DC_GPIO_Port  GPIOA
+#define ILI9341_DC_Pin        GPIO_PIN_1
+#define ILI9341_DC_GPIO_Port  GPIOB
 
 //// default orientation
 //#define ILI9341_WIDTH  240
@@ -65,6 +65,7 @@ extern SPI_HandleTypeDef ILI9341_SPI_PORT;
 #define ILI9341_COLOR565(r, g, b) (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3))
 
 // call before initializing any SPI devices
+bool ILI9341_IsBusy(void);
 void ILI9341_Unselect();
 
 void ILI9341_Init(void);
@@ -74,5 +75,7 @@ void ILI9341_FillRectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint1
 void ILI9341_FillScreen(uint16_t color);
 void ILI9341_DrawImage(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t* data);
 void ILI9341_InvertColors(bool invert);
-
+void ILI9341_FillScreen_TopToBottom(uint16_t color, uint8_t slice_height, uint8_t delay_ms);
+void ILI9341_DrawMario(uint16_t x_pos, uint16_t y_pos, uint8_t scale);
+void ILI9341_SetRotation(uint8_t rotation);
 #endif // __ILI9341_H__

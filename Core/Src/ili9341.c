@@ -3,39 +3,122 @@
 #include "ili9341.h"
 //#include "cmsis_os.h"
 
-static uint8_t dma_pixel_buffer[200];
+#define DMA_BUFFER_SIZE 640
+/* Bảng màu RGB565 cho Mario */
+#define MARIO_RED     0xF800  // Đỏ (Nón & Áo)
+#define MARIO_SKIN    0xFDE5  // Màu da (Mặt & Tay)
+#define MARIO_BLUE    0x021F  // Xanh dương (Quần yếm)
+#define MARIO_BROWN   0x8A22  // Nâu đậm (Tóc & Giày)
+#define MARIO_YELLOW  0xFFE0  // Vàng (Nút áo)
+#define _             0x0000  // Màu trong suốt (Bỏ qua không vẽ)
+extern volatile int dma_tx_done;
+/* Ma trận điểm ảnh Mario 16x16 */
+static const uint16_t mario_sprite[16][16] = {
+    { _, _, _, _, _, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, _, _, _, _, _, _ },
+    { _, _, _, _, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, _, _, _ },
+    { _, _, _, _, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_BROWN, MARIO_SKIN, _, _, _, _, _ },
+    { _, _, _, MARIO_BROWN, MARIO_SKIN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, _, _, _ },
+    { _, _, _, MARIO_BROWN, MARIO_SKIN, MARIO_BROWN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, _, _ },
+    { _, _, _, MARIO_BROWN, MARIO_BROWN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, _, _, _ },
+    { _, _, _, _, _, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, _, _, _, _ },
+    { _, _, _, _, MARIO_RED, MARIO_RED, MARIO_BLUE, MARIO_RED, MARIO_RED, MARIO_RED, _, _, _, _, _, _ },
+    { _, _, _, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_BLUE, MARIO_RED, MARIO_RED, MARIO_BLUE, MARIO_RED, MARIO_RED, MARIO_RED, _, _, _ },
+    { _, _, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_RED, MARIO_RED, MARIO_RED, MARIO_RED, _, _ },
+    { _, _, MARIO_SKIN, MARIO_SKIN, MARIO_RED, MARIO_BLUE, MARIO_YELLOW, MARIO_BLUE, MARIO_BLUE, MARIO_YELLOW, MARIO_BLUE, MARIO_RED, MARIO_SKIN, MARIO_SKIN, _, _ },
+    { _, _, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_SKIN, MARIO_SKIN, MARIO_SKIN, _, _ },
+    { _, _, MARIO_SKIN, MARIO_SKIN, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, MARIO_SKIN, MARIO_SKIN, _, _ },
+    { _, _, _, _, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, _, _, MARIO_BLUE, MARIO_BLUE, MARIO_BLUE, _, _, _, _ },
+    { _, _, _, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, _, _, _, _, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, _, _, _ },
+    { _, _, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, _, _, _, _, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, MARIO_BROWN, _, _ }
+};
+
+/**
+ * @brief Vẽ Mario lên màn hình ILI9341
+ * @param x_pos: Tọa độ X góc trên bên trái
+ * @param y_pos: Tọa độ Y góc trên bên trái
+ * @param scale: Hệ số phóng to (VD: scale = 6 -> Kích thước Mario sẽ là 96x96 pixel)
+ */
+static uint8_t dma_pixel_buffer[DMA_BUFFER_SIZE];
 extern SPI_HandleTypeDef ILI9341_SPI_PORT;
+/* ====================================================================
+ * BIẾN QUẢN LÝ TRẠNG THÁI NON-BLOCKING DMA
+ * ==================================================================== */
+static volatile uint8_t ili9341_dma_busy = 0;       // Cờ báo DMA đang bận
+static volatile uint32_t dma_remaining_bytes = 0;   // Số byte còn lại cần truyền
+static const uint8_t *dma_source_ptr = NULL;        // NULL nếu dùng buffer màu lặp (Fill), khác NULL nếu vẽ ảnh (DrawImage)
+
+void ILI9341_DrawMario(uint16_t x_pos, uint16_t y_pos, uint8_t scale)
+{
+    for (uint8_t row = 0; row < 16; row++) {
+        for (uint8_t col = 0; col < 16; col++) {
+            uint16_t pixel_color = mario_sprite[row][col];
+
+            // Nếu pixel khác rỗng thì vẽ khối hình vuông theo scale
+            if (pixel_color != _) {
+                ILI9341_FillRectangle(x_pos + (col * scale),
+                                      y_pos + (row * scale),
+                                      scale,
+                                      scale,
+                                      pixel_color);
+            }
+        }
+    }
+}
+// Hàm kiểm tra màn hình có đang bận truyền DMA không (gọi từ ngoài nếu cần)
+bool ILI9341_IsBusy(void) {
+    return ili9341_dma_busy != 0;
+}
+
+// Chờ an toàn trước khi thực hiện lệnh SPI mới
+static inline void ILI9341_WaitDMA(void) {
+    while (ili9341_dma_busy);
+}
 
 static void ILI9341_Select() {
-    HAL_GPIO_WritePin(ILI9341_CS_GPIO_Port, ILI9341_CS_Pin, GPIO_PIN_RESET);
+    // Kéo CS xuống LOW bằng thanh ghi BSRR (1 chu kỳ clock)
+    ILI9341_CS_GPIO_Port->BSRR = (uint32_t)ILI9341_CS_Pin << 16U;
 }
 
 void ILI9341_Unselect() {
-    HAL_GPIO_WritePin(ILI9341_CS_GPIO_Port, ILI9341_CS_Pin, GPIO_PIN_SET);
+    // Đợi SPI đẩy xong bit cuối cùng ra đường truyền rồi mới nhả CS lên HIGH
+    while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
+    ILI9341_CS_GPIO_Port->BSRR = ILI9341_CS_Pin;
 }
 
 static void ILI9341_Reset() {
-    HAL_GPIO_WritePin(ILI9341_RES_GPIO_Port, ILI9341_RES_Pin, GPIO_PIN_RESET);
+    ILI9341_WaitDMA();
+    ILI9341_RES_GPIO_Port->BSRR = (uint32_t)ILI9341_RES_Pin << 16U;
     HAL_Delay(5);
-    HAL_GPIO_WritePin(ILI9341_RES_GPIO_Port, ILI9341_RES_Pin, GPIO_PIN_SET);
+    ILI9341_RES_GPIO_Port->BSRR = ILI9341_RES_Pin;
+    HAL_Delay(20);
 }
 
 static void ILI9341_WriteCommand(uint8_t cmd) {
-	while (HAL_SPI_GetState(&ILI9341_SPI_PORT) != HAL_SPI_STATE_READY);
-    HAL_GPIO_WritePin(ILI9341_DC_GPIO_Port, ILI9341_DC_Pin, GPIO_PIN_RESET);
-    HAL_SPI_Transmit(&ILI9341_SPI_PORT, &cmd, sizeof(cmd), HAL_MAX_DELAY);
+    ILI9341_WaitDMA();
+	while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
+    // Kéo DC xuống LOW (Command)
+    ILI9341_DC_GPIO_Port->BSRR = (uint32_t)ILI9341_DC_Pin << 16U;
+    
+    // Ghi trực tiếp vào thanh ghi Data Register của SPI
+    while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+    *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = cmd;
+    
+    while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
 }
 
 static void ILI9341_WriteData(uint8_t* buff, size_t buff_size) {
-	while (HAL_SPI_GetState(&ILI9341_SPI_PORT) != HAL_SPI_STATE_READY);
-    HAL_GPIO_WritePin(ILI9341_DC_GPIO_Port, ILI9341_DC_Pin, GPIO_PIN_SET);
+    ILI9341_WaitDMA();
+    while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
+    // Kéo DC lên HIGH (Data)
+    ILI9341_DC_GPIO_Port->BSRR = ILI9341_DC_Pin;
 
-    while(buff_size > 0) {
-        uint16_t chunk_size = buff_size > 32768 ? 32768 : buff_size;
-        HAL_SPI_Transmit(&ILI9341_SPI_PORT, buff, chunk_size, HAL_MAX_DELAY);
-        buff += chunk_size;
-        buff_size -= chunk_size;
+    // Đẩy mảng data trực tiếp qua thanh ghi SPI mà không qua hàm HAL
+    for (size_t i = 0; i < buff_size; i++) {
+        while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+        *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = buff[i];
     }
+    
+    while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
 }
 
 
@@ -59,6 +142,7 @@ static void ILI9341_SetAddressWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint
 }
 
 void ILI9341_Init() {
+	__HAL_SPI_ENABLE(&ILI9341_SPI_PORT);
     ILI9341_Select();
     ILI9341_Reset();
 
@@ -216,7 +300,7 @@ void ILI9341_Init() {
 void ILI9341_DrawPixel(uint16_t x, uint16_t y, uint16_t color) {
     if((x >= ILI9341_WIDTH) || (y >= ILI9341_HEIGHT))
         return;
-
+    ILI9341_WaitDMA();
     ILI9341_Select();
 
     ILI9341_SetAddressWindow(x, y, x+1, y+1);
@@ -230,22 +314,34 @@ static void ILI9341_WriteChar(uint16_t x, uint16_t y, char ch, FontDef font, uin
     uint32_t i, b, j;
 
     ILI9341_SetAddressWindow(x, y, x+font.width-1, y+font.height-1);
+    ILI9341_DC_GPIO_Port->BSRR = ILI9341_DC_Pin;
 
+    // Chuẩn bị byte màu
+    uint8_t fg_hi = color >> 8, fg_lo = color & 0xFF;
+    uint8_t bg_hi = bgcolor >> 8, bg_lo = bgcolor & 0xFF;
+
+    // Đẩy pixel trực tiếp qua SPI->DR để vẽ font chữ nhanh gấp 10 lần
     for(i = 0; i < font.height; i++) {
         b = font.data[(ch - 32) * font.height + i];
         for(j = 0; j < font.width; j++) {
-            if((b << j) & 0x8000)  {
-                uint8_t data[] = { color >> 8, color & 0xFF };
-                ILI9341_WriteData(data, sizeof(data));
+            if((b << j) & 0x8000) {
+                while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+                *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = fg_hi;
+                while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+                *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = fg_lo;
             } else {
-                uint8_t data[] = { bgcolor >> 8, bgcolor & 0xFF };
-                ILI9341_WriteData(data, sizeof(data));
+                while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+                *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = bg_hi;
+                while (!(ILI9341_SPI_PORT.Instance->SR & SPI_SR_TXE));
+                *(__IO uint8_t *)&ILI9341_SPI_PORT.Instance->DR = bg_lo;
             }
         }
     }
+    while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
 }
 
 void ILI9341_WriteString(uint16_t x, uint16_t y, const char* str, FontDef font, uint16_t color, uint16_t bgcolor) {
+    ILI9341_WaitDMA();
     ILI9341_Select();
 
     while(*str) {
@@ -276,64 +372,145 @@ void ILI9341_FillRectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint1
     if((x + w - 1) >= ILI9341_WIDTH) w = ILI9341_WIDTH - x;
     if((y + h - 1) >= ILI9341_HEIGHT) h = ILI9341_HEIGHT - y;
 
+    ILI9341_WaitDMA();
     ILI9341_Select();
     ILI9341_SetAddressWindow(x, y, x + w - 1, y + h - 1);
-    HAL_GPIO_WritePin(ILI9341_DC_GPIO_Port, ILI9341_DC_Pin, GPIO_PIN_SET);
+    // Kéo DC lên mức DATA bằng thanh ghi BSRR
+    ILI9341_DC_GPIO_Port->BSRR = ILI9341_DC_Pin;
 
-    uint32_t num_pixels = w * h;
+    uint8_t hi = color >> 8;
+    uint8_t lo = color & 0xFF;
 
-    // TRƯỜNG HỢP 1: Vẽ đốt rắn/mồi (ô 10x10) -> DÙNG DMA
-    if (num_pixels <= 100) {
-        uint8_t hi = color >> 8;
-        uint8_t lo = color & 0xFF;
-
-        // Nạp data vào buffer chung
-        for (uint16_t i = 0; i < num_pixels * 2; i += 2) {
-            dma_pixel_buffer[i] = hi;
-            dma_pixel_buffer[i+1] = lo;
-        }
-
-        // Bắt đầu nhồi data vào DMA
-        HAL_SPI_Transmit_DMA(&ILI9341_SPI_PORT, dma_pixel_buffer, num_pixels * 2);
-
-        // --- ĐÂY LÀ CHÌA KHÓA GIẢI QUYẾT VẤN ĐỀ ---
-        // Ép CPU đứng đợi bộ SPI báo "READY" (tức là DMA đã đẩy xong bit cuối cùng)
-        while (HAL_SPI_GetState(&ILI9341_SPI_PORT) != HAL_SPI_STATE_READY) {
-            HAL_Delay(1); // Tranh thủ lúc đợi DMA thì nhường quyền cho Task khác chạy
-        }
-
-        // DMA chạy xong 100% rồi thì mới được phép kéo CS lên
-        ILI9341_Unselect();
+    // Nạp đầy buffer DMA bằng màu cần tô (chỉ nạp 1 lần)
+    for (uint16_t i = 0; i < sizeof(dma_pixel_buffer); i += 2) {
+        dma_pixel_buffer[i] = hi;
+        dma_pixel_buffer[i+1] = lo;
     }
-    // TRƯỜNG HỢP 2: Vẽ vùng lớn (Xóa màn hình) -> DÙNG POLLING NHƯ CŨ
-    else {
-        uint8_t data[] = { color >> 8, color & 0xFF };
-        for(uint32_t i = 0; i < num_pixels; i++) {
-            HAL_SPI_Transmit(&ILI9341_SPI_PORT, data, 2, HAL_MAX_DELAY);
-        }
-        ILI9341_Unselect(); // Xong vùng lớn thì ngắt CS
-    }
+
+    // Tính tổng số byte cần truyền (mỗi pixel = 2 bytes)
+    uint32_t total_bytes = (uint32_t)w * h * 2;
+    uint16_t first_chunk = total_bytes > sizeof(dma_pixel_buffer) ? sizeof(dma_pixel_buffer) : total_bytes;
+
+    // Thiết lập trạng thái truyền ngầm cho Callback
+    dma_source_ptr = NULL; // NULL báo hiệu dùng buffer màu lặp
+    dma_remaining_bytes = total_bytes - first_chunk;
+    ili9341_dma_busy = 1;
+
+    // Bắt đầu đẩy khối đầu tiên - CPU THOÁT HÀM NGAY LẬP TỨC
+    HAL_SPI_Transmit_DMA(&ILI9341_SPI_PORT, dma_pixel_buffer, first_chunk);
+
 }
 
 void ILI9341_FillScreen(uint16_t color) {
     // Trả về code chuẩn, chỉ vẽ đúng 320x240 để chip màn hình không bị tràn RAM
     ILI9341_FillRectangle(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, color);
 }
+
+void ILI9341_FillScreen_TopToBottom(uint16_t color, uint8_t slice_height, uint8_t delay_ms)
+{
+    for (uint16_t y = 0; y < ILI9341_HEIGHT; y += slice_height) {
+        uint16_t h = (y + slice_height > ILI9341_HEIGHT) ? (ILI9341_HEIGHT - y) : slice_height;
+        ILI9341_FillRectangle(0, y, ILI9341_WIDTH, h, color);
+        while (ILI9341_IsBusy());
+        if (delay_ms > 0) {
+            HAL_Delay(delay_ms);
+        }
+    }
+}
+
 void ILI9341_DrawImage(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t* data) {
     if((x >= ILI9341_WIDTH) || (y >= ILI9341_HEIGHT)) return;
     if((x + w - 1) >= ILI9341_WIDTH) return;
     if((y + h - 1) >= ILI9341_HEIGHT) return;
 
+    ILI9341_WaitDMA();
     ILI9341_Select();
     ILI9341_SetAddressWindow(x, y, x+w-1, y+h-1);
-    ILI9341_WriteData((uint8_t*)data, sizeof(uint16_t)*w*h);
-    ILI9341_Unselect();
+
+    // Kéo DC lên Data
+    ILI9341_DC_GPIO_Port->BSRR = ILI9341_DC_Pin;
+
+    uint32_t total_bytes = (uint32_t)w * h * 2;
+    uint16_t first_chunk = total_bytes > 32768 ? 32768 : total_bytes;
+
+    dma_source_ptr = (const uint8_t*)data + first_chunk;
+    dma_remaining_bytes = total_bytes - first_chunk;
+    ili9341_dma_busy = 1;
+
+    HAL_SPI_Transmit_DMA(&ILI9341_SPI_PORT, (uint8_t*)data, first_chunk);
 }
 
 void ILI9341_InvertColors(bool invert) {
+    ILI9341_WaitDMA();
     ILI9341_Select();
     ILI9341_WriteCommand(invert ? 0x21 /* INVON */ : 0x20 /* INVOFF */);
     ILI9341_Unselect();
 }
 
+/**
+ * @brief Thiết lập hướng hoặc lật ngược màn hình LCD ILI9341
+ * @param rotation: Giá trị từ 0 đến 3 (hoặc dùng các macro định nghĩa sẵn)
+ */
+void ILI9341_SetRotation(uint8_t rotation)
+{
+    ILI9341_WaitDMA();
+    ILI9341_Select();
 
+    ILI9341_WriteCommand(0x36); // Thanh ghi MADCTL (Memory Access Control)
+
+    uint8_t rotation_value = 0;
+    switch (rotation % 4) {
+        case 0: // Normal (Portrait)
+            rotation_value = 0x48; // MX, BGR
+            break;
+        case 1: // Landscape (Xoay ngang 90 độ)
+            rotation_value = 0x28; // MV, BGR
+            break;
+        case 2: // Inverted / Lật ngược (Portrait 180 độ)
+            rotation_value = 0x98; // MY, ML, BGR  <-- HÀM LẬT NGƯỢC BẠN ĐANG CẦN
+            break;
+        case 3: // Landscape lật ngược (270 độ)
+            rotation_value = 0xF8; // MY, MX, MV, BGR
+            break;
+    }
+
+    ILI9341_WriteData(&rotation_value, 1);
+    ILI9341_Unselect();
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
+    if (hspi->Instance == SPI2)
+    {
+        dma_tx_done = 1;
+        return;
+    }
+
+
+	if (hspi->Instance == ILI9341_SPI_PORT.Instance) {
+        // Nếu vẫn còn dữ liệu chưa đẩy hết
+        if (dma_remaining_bytes > 0) {
+            if (dma_source_ptr == NULL) {
+                // Đang tô màu FillRectangle/FillScreen: dùng tiếp dma_pixel_buffer
+                uint16_t next_chunk = dma_remaining_bytes > sizeof(dma_pixel_buffer) ? sizeof(dma_pixel_buffer) : dma_remaining_bytes;
+                dma_remaining_bytes -= next_chunk;
+                HAL_SPI_Transmit_DMA(&ILI9341_SPI_PORT, dma_pixel_buffer, next_chunk);
+            } else {
+                // Đang vẽ ảnh DrawImage: tăng con trỏ và đẩy khối kế
+                uint16_t next_chunk = dma_remaining_bytes > 32768 ? 32768 : dma_remaining_bytes;
+                const uint8_t *curr_ptr = dma_source_ptr;
+                dma_source_ptr += next_chunk;
+                dma_remaining_bytes -= next_chunk;
+                HAL_SPI_Transmit_DMA(&ILI9341_SPI_PORT, (uint8_t*)curr_ptr, next_chunk);
+            }
+        } 
+        // Khi toàn bộ dữ liệu đã được nạp hết vào bộ đệm SPI
+        else {
+            // Đợi bộ dịch bit SPI phát nốt bit cuối cùng
+            while (ILI9341_SPI_PORT.Instance->SR & SPI_SR_BSY);
+            // Tự động ngắt CS lên HIGH bằng thanh ghi
+            ILI9341_CS_GPIO_Port->BSRR = ILI9341_CS_Pin;
+            // Xóa cờ bận
+            ili9341_dma_busy = 0;
+        }
+    }
+}
