@@ -1,0 +1,14 @@
+../Core/Src/player.c:47:20:play_note_on_timer	2
+../Core/Src/player.c:59:20:play_motor1	1
+../Core/Src/player.c:60:20:play_motor2	1
+../Core/Src/player.c:61:20:play_motor3	1
+../Core/Src/player.c:66:20:tick_voice	7
+../Core/Src/player.c:89:6:player_tick	1
+../Core/Src/player.c:99:6:player_init	1
+../Core/Src/player.c:111:6:player_play_song	3
+../Core/Src/player.c:142:6:player_next_song	2
+../Core/Src/player.c:148:6:player_play_3ch	1
+../Core/Src/player.c:164:6:player_set_volume_channel	6
+../Core/Src/player.c:174:6:player_set_volume	1
+../Core/Src/player.c:180:6:player_stop	1
+../Core/Src/player.c:187:6:player_play	1

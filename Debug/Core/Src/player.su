@@ -1,0 +1,14 @@
+../Core/Src/player.c:47:20:play_note_on_timer	24	static
+../Core/Src/player.c:59:20:play_motor1	16	static
+../Core/Src/player.c:60:20:play_motor2	16	static
+../Core/Src/player.c:61:20:play_motor3	16	static
+../Core/Src/player.c:66:20:tick_voice	16	static
+../Core/Src/player.c:89:6:player_tick	8	static
+../Core/Src/player.c:99:6:player_init	8	static
+../Core/Src/player.c:111:6:player_play_song	16	static
+../Core/Src/player.c:142:6:player_next_song	16	static
+../Core/Src/player.c:148:6:player_play_3ch	24	static
+../Core/Src/player.c:164:6:player_set_volume_channel	16	static
+../Core/Src/player.c:174:6:player_set_volume	16	static
+../Core/Src/player.c:180:6:player_stop	4	static
+../Core/Src/player.c:187:6:player_play	16	static
